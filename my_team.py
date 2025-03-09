@@ -262,15 +262,8 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                         self.already_counted_food.add(food)
 
 
-            # +1 als lengte food veranderd
-            #food_collected = len(prev_food_list) - len(current_food_list)
-            #if food_collected > 0:
-            #    self.food += 1
 
-            #if self.food < 0:
-            #    self.food = 0
-
-        print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
+        #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
 
 
 
@@ -564,15 +557,8 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
                         self.already_counted_food.add(food)
 
 
-            # +1 als lengte food veranderd
-            #food_collected = len(prev_food_list) - len(current_food_list)
-            #if food_collected > 0:
-            #    self.food += 1
 
-            #if self.food < 0:
-            #    self.food = 0
-
-        print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
+        #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
 
 
 
