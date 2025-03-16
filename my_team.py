@@ -200,7 +200,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
 class HybridReflexAgentSwitch(ReflexCaptureAgent):
     def __init__(self, index):
         super().__init__(index)
-        self.threshold = 5
+        self.threshold = 5 #5
         self.food = 0
         self.already_counted_food = set()
         self.is_defensive = False
@@ -325,7 +325,7 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in defenders]
             mindist = min(dists)
             if mindist < 3:
-                features['ghost_really_close'] = mindist
+                features['ghost_really_close'] = -100 * (3 - mindist)
             else:
                 features['ghost_close'] = mindist
 
@@ -342,8 +342,11 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     ghost_pos = ghost_state.get_position()
                     if ghost_pos:
                         dist = self.get_maze_distance(my_pos, ghost_pos)
-                        closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
-                        features['distance_to_scared_ghost'] = closest_scared_ghost_dist
+                        if dist < 7:
+                            closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
+                            features['distance_to_scared_ghost'] = closest_scared_ghost_dist * 50
+                        else:
+                            features['distance_to_scared_ghost'] = 0
                 else:
                     features['distance_to_scared_ghost'] = 0
         features['scared_ghost_time'] = max_scared_time
@@ -400,14 +403,14 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     most_enemy_food = enemy.num_carrying
                     distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
 
-        if most_enemy_food >= 6:
-            features['distance_enemy_most_food'] = distance_enemy_most_food * 20  # super high prio
         if most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 20  # super high prio
+        if most_enemy_food >= 4:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 10  # high prio
         elif most_enemy_food >= 3:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 5  # mid prio
         elif most_enemy_food >= 1:
-            features['distance_enemy_most_food'] = distance_enemy_most_food * 1  # low prio
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 3  # low prio
         else:
             features['distance_enemy_most_food'] = 0  # no prio
 
@@ -425,52 +428,57 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     enemies_far_from_mid = False
                     break
 
-        if most_enemy_food >= 5:
+        if most_enemy_food >= 4 or self.food > 5 or len(invaders) > 1:
             self.is_defensive = True
-            #print(f"️‼️ Agent {self.index} ONMIDDELIJK defensive!‼️")  # DEBUGGING
-
-        if self.food > 2:
-            self.is_defensive = True
-            #print(f"⚠️ Agent {self.index} gaat defensive! self.food = {self.food}") # DEBUGGING
-
         elif enemies_on_our_side >= 1 and self.get_score(game_state) >= self.threshold:
             self.is_defensive = True
-
         elif enemies_on_their_side == len(enemies) and self.food == 0 and enemies_far_from_mid:
             self.is_defensive = False
-            #print(f"⚔️️ Agent {self.index} OPNIEUW offensive")  # DEBUGGING
-
+        elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
+            self.is_defensive = True
         elif self.get_score(game_state) >= self.threshold:
             self.is_defensive = True
-            #print(f"⚠️⚠️ Agent {self.index} defensive! self.treshold = {self.threshold}")  # DEBUGGING
-
         else:
             self.is_defensive = False
-            #print(f"⚔️️ Agent {self.index} offensive")  # DEBUGGING
 
 
         return features
 
     def get_weights(self, game_state, action):
-        if self.is_defensive:
+        my_state = game_state.get_agent_state(self.index)
+        if self.is_defensive and my_state.scared_timer > 4:
+            # offensive weights
+            return {'num_invaders': -100,
+                    'successor_score': 100,
+                    'distance_to_food': -1,
+                    'ghost_really_close': 500,
+                    'ghost_close': 50,
+                    'stop': -100,
+                    'scared_ghost_time': 5,
+                    'distance_to_scared_ghost': -10,
+                    'is_scared': -200,
+                    'distance_to_attacking_pacman': 50,
+                    'distance_to_home': -50 * self.food,
+                    'distance_to_enemy_capsule': -50}
+
+        elif self.is_defensive:
             #defensive weights
             weights = {'num_invaders': -1000,
-                        'distance_to_capsule': -5,
-                        'on_defense': 100,
-                        'invader_distance': -10,
-                        'stop': -10,
+                        #'distance_to_capsule': -2,
+                        'on_defense': 1000,
+                        'invader_distance': -50,
+                        'stop': -2,
                         'reverse': -2,
                         'scared_ghost_time': 5,
-                        'distance_to_scared_ghost': -100,
+                        'distance_to_scared_ghost': -10,
                         'is_scared': -200,
-                        'distance_to_attacking_pacman': 50,
+                        'distance_to_attacking_pacman': 20,
                         'distance_to_home': -50}
 
-            my_state = game_state.get_agent_state(self.index)
             if my_state.scared_timer == 0:
-                weights['distance_enemy_most_food'] = -300
+                weights['distance_enemy_most_food'] = -1000
             else:
-                weights['distance_enemy_most_food'] = 0
+                weights['distance_enemy_most_food'] = -100
 
 
             return weights
@@ -478,24 +486,31 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
 
         else:
             #offensive weights
-            return {'successor_score': 100,
-                    'distance_to_food': -1,
-                    'ghost_really_close': 1000,
-                    'ghost_close': 50,
-                    'stop': -100,
-                    'scared_ghost_time': 5,
-                    'distance_to_scared_ghost': -100,
-                    'is_scared': -200,
-                    'distance_to_attacking_pacman': 50,
-                    'distance_to_home': -50 * self.food,
-                    'distance_to_enemy_capsule': -50}
+            weights =  {'num_invaders': -100,
+                        'successor_score': 100,
+                        'distance_to_food': -1,
+                        'ghost_really_close': 1000,
+                        'ghost_close': 50,
+                        'stop': -100,
+                        'scared_ghost_time': 5,
+                        'distance_to_scared_ghost': -100,
+                        'is_scared': -200,
+                        'distance_to_attacking_pacman': 50,
+                        'distance_to_home': -50 * self.food}
+
+            if self.get_score(game_state) <= -1 * self.threshold:
+                weights['distance_to_enemy_capsule'] = -300
+            else:
+                weights['distance_to_enemy_capsule'] = -1
+
+            return weights
 
 
 
 class HybridReflexAgentDefence(ReflexCaptureAgent):
     def __init__(self, index):
         super().__init__(index)
-        self.threshold = 5
+        self.threshold = 5 #5
         self.food = 0
         self.already_counted_food = set()
         self.is_defensive = False
@@ -574,7 +589,7 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
         my_pos = my_state.get_position()
 
         capsules = self.get_capsules_you_are_defending(game_state)
-        if capsules:
+        if capsules and self.get_score(game_state) != 0:
             min_distance_to_capsule = min(self.get_maze_distance(my_pos, capsule) for capsule in capsules)
             features['distance_to_capsule'] = min_distance_to_capsule
         else:
@@ -620,7 +635,7 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in defenders]
             mindist = min(dists)
             if mindist < 3:
-                features['ghost_really_close'] = mindist
+                features['ghost_really_close'] = -100 * (3 - mindist)
             else:
                 features['ghost_close'] = mindist
 
@@ -637,8 +652,11 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
                     ghost_pos = ghost_state.get_position()
                     if ghost_pos:
                         dist = self.get_maze_distance(my_pos, ghost_pos)
-                        closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
-                        features['distance_to_scared_ghost'] = closest_scared_ghost_dist
+                        if dist < 7:
+                            closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
+                            features['distance_to_scared_ghost'] = closest_scared_ghost_dist * 50
+                        else:
+                            features['distance_to_scared_ghost'] = 0
                 else:
                     features['distance_to_scared_ghost'] = 0
         features['scared_ghost_time'] = max_scared_time
@@ -696,8 +714,10 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
                     distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
 
         if most_enemy_food >= 6:
-            features['distance_enemy_most_food'] = distance_enemy_most_food * 20  # super high prio
-        if most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 100  # highest prio
+        elif most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 25  # super high prio
+        elif most_enemy_food >= 4:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 10  # high prio
         elif most_enemy_food >= 3:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 5  # mid prio
@@ -711,58 +731,63 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
         # STRATEGY
         enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
 
-        if most_enemy_food >= 5:
+        if most_enemy_food >= 4 or self.food > 2 or len(invaders) > 1:
             self.is_defensive = True
-            #print(f"️‼️ Agent {self.index} ONMIDDELIJK defensive!‼️")  # DEBUGGING
-
-        if self.food > 2:
+        elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
             self.is_defensive = True
-            #print(f"⚠️ Agent {self.index} gaat defensive! self.food = {self.food}") # DEBUGGING
-
-        elif self.get_score(game_state) >= self.threshold:
+        elif self.get_score(game_state) >= self.threshold: #or self.get_score(game_state) == 0:
             self.is_defensive = True
-            #print(f"⚠️⚠️ Agent {self.index} defensive! self.treshold = {self.threshold}")  # DEBUGGING
-
         else:
             self.is_defensive = False
-            #print(f"⚔️️ Agent {self.index} offensive")  # DEBUGGING
 
 
         return features
 
     def get_weights(self, game_state, action):
+        my_state = game_state.get_agent_state(self.index)
         if self.is_defensive:
             #defensive weights
             weights = {'num_invaders': -1000,
-                        'distance_to_capsule': -50,
-                        'on_defense': 100,
-                        'invader_distance': -10,
-                        'stop': -10,
-                        'reverse': -2,
-                        'scared_ghost_time': 5,
-                        'distance_to_scared_ghost': -100,
-                        'is_scared': -200,
-                        'distance_to_attacking_pacman': 50,
-                        'distance_to_home': -50}
+                       'distance_to_capsule': -50,
+                       'on_defense': 1000,
+                       'invader_distance': -50,
+                       'stop': -2,
+                       'reverse': -2,
+                       'scared_ghost_time': 5,
+                       'distance_to_scared_ghost': -10,
+                       'is_scared': -200,
+                       'distance_to_attacking_pacman': 50}
+                       #'distance_to_home': -50}
 
-            my_state = game_state.get_agent_state(self.index)
-            if my_state.scared_timer == 0:
-                weights['distance_enemy_most_food'] = -300
+            if my_state.scared_timer < 3:
+                weights['distance_enemy_most_food'] = -1000
             else:
-                weights['distance_enemy_most_food'] = 0
+                weights['distance_enemy_most_food'] = -100
+
+            if self.get_score(game_state) == 0:
+                weights['distance_to_home'] = -300  # Grote weight om de middellijn te bewaken
+            else:
+                weights['distance_to_home'] = -50
 
             return weights
 
         else:
             #offensive weights
-            return {'successor_score': 100,
-                    'distance_to_food': -1,
-                    'ghost_really_close': 1000,
-                    'ghost_close': 50,
-                    'stop': -100,
-                    'scared_ghost_time': 5,
-                    'distance_to_scared_ghost': -100,
-                    'is_scared': -200,
-                    'distance_to_attacking_pacman': 50,
-                    'distance_to_home': -50 * self.food,
-                    'distance_to_enemy_capsule': -50}
+            weights =  {'num_invaders': -100,
+                        'successor_score': 100,
+                        'distance_to_food': -1,
+                        'ghost_really_close': 1000,
+                        'ghost_close': 50,
+                        'stop': -100,
+                        'scared_ghost_time': 5,
+                        'distance_to_scared_ghost': -100,
+                        'is_scared': -200,
+                        'distance_to_attacking_pacman': 50,
+                        'distance_to_home': -50 * self.food}
+
+            if self.get_score(game_state) <= -1 * self.threshold:
+                weights['distance_to_enemy_capsule'] = -300
+            else:
+                weights['distance_to_enemy_capsule'] = -1
+
+            return weights
