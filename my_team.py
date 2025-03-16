@@ -33,7 +33,7 @@ from util import nearest_point
 #################
 
 def create_team(first_index, second_index, is_red,
-                first='HybridReflexAgentSwitch', second='HybridReflexAgentDefence', num_training=0):
+                first='AggressiveHybridSwitch', second='AggressiveHybridDefence', num_training=0):
     """
     This function should return a list of two agents that will form the
     team, initialized using firstIndex and secondIndex as their agent
@@ -197,10 +197,10 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
 
 
-class HybridReflexAgentSwitch(ReflexCaptureAgent):
+class HybridSwitch(ReflexCaptureAgent):
     def __init__(self, index):
         super().__init__(index)
-        self.threshold = 5 #5
+        self.threshold = 6 #5
         self.food = 0
         self.already_counted_food = set()
         self.is_defensive = False
@@ -382,11 +382,8 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     if distance < best_distance:
                         best_distance = distance
 
-        if self.food > 1:
-            features['distance_to_home'] = best_distance
-        else:
-            features['distance_to_home'] = 0
-        # features['distance_to_home'] = best_distance if self.food > 1 else 0
+        features['distance_to_home'] = best_distance
+
 
         # ENEMY FOOD
         enemies = []
@@ -403,9 +400,11 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     most_enemy_food = enemy.num_carrying
                     distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
 
-        if most_enemy_food >= 5:
-            features['distance_enemy_most_food'] = distance_enemy_most_food * 20  # super high prio
-        if most_enemy_food >= 4:
+        if most_enemy_food >= 6:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 100  # highest prio
+        elif most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 25  # super high prio
+        elif most_enemy_food >= 4:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 10  # high prio
         elif most_enemy_food >= 3:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 5  # mid prio
@@ -428,7 +427,7 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     enemies_far_from_mid = False
                     break
 
-        if most_enemy_food >= 4 or self.food > 5 or len(invaders) > 1:
+        if most_enemy_food >= 4 or self.food > 4 or enemies_on_our_side > 1:
             self.is_defensive = True
         elif enemies_on_our_side >= 1 and self.get_score(game_state) >= self.threshold:
             self.is_defensive = True
@@ -458,14 +457,14 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                     'distance_to_scared_ghost': -10,
                     'is_scared': -200,
                     'distance_to_attacking_pacman': 50,
-                    'distance_to_home': -50 * self.food,
+                    'distance_to_home': -1 * (1+(self.food*10)),
                     'distance_to_enemy_capsule': -50}
 
         elif self.is_defensive:
             #defensive weights
             weights = {'num_invaders': -1000,
                         #'distance_to_capsule': -2,
-                        'on_defense': 1000,
+                        'on_defense': 300,
                         'invader_distance': -50,
                         'stop': -2,
                         'reverse': -2,
@@ -496,7 +495,7 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
                         'distance_to_scared_ghost': -100,
                         'is_scared': -200,
                         'distance_to_attacking_pacman': 50,
-                        'distance_to_home': -50 * self.food}
+                        'distance_to_home': -1 * (1+(self.food*10))}
 
             if self.get_score(game_state) <= -1 * self.threshold:
                 weights['distance_to_enemy_capsule'] = -300
@@ -507,10 +506,10 @@ class HybridReflexAgentSwitch(ReflexCaptureAgent):
 
 
 
-class HybridReflexAgentDefence(ReflexCaptureAgent):
+class HybridDefence(ReflexCaptureAgent):
     def __init__(self, index):
         super().__init__(index)
-        self.threshold = 5 #5
+        self.threshold = 2 #5
         self.food = 0
         self.already_counted_food = set()
         self.is_defensive = False
@@ -692,6 +691,629 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
                     if distance < best_distance:
                         best_distance = distance
 
+        features['distance_to_home'] = best_distance
+
+
+        # ENEMY FOOD
+        enemies = []
+        for i in self.get_opponents(game_state):
+            enemy_state = game_state.get_agent_state(i)
+            enemies.append(enemy_state)
+
+        distance_enemy_most_food = 0
+        most_enemy_food = 0
+
+        for enemy in enemies:
+            if enemy.is_pacman and enemy.get_position() is not None:
+                if enemy.num_carrying > most_enemy_food:
+                    most_enemy_food = enemy.num_carrying
+                    distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
+
+        if most_enemy_food >= 6:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 100  # highest prio
+        elif most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 25  # super high prio
+        elif most_enemy_food >= 4:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 10  # high prio
+        elif most_enemy_food >= 3:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 5  # mid prio
+            self.is_defensive = True
+        elif most_enemy_food >= 1:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 3  # low prio
+        else:
+            features['distance_enemy_most_food'] = 0  # no prio
+
+
+        # STRATEGY
+        enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
+        enemies_on_our_side = sum(1 for enemy in enemies if enemy.is_pacman and enemy.get_position() is not None)
+
+        if most_enemy_food >= 4 or self.food > 2 or enemies_on_our_side > 1:
+            self.is_defensive = True
+        elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
+            self.is_defensive = True
+        elif self.get_score(game_state) >= self.threshold: #or self.get_score(game_state) == 0:
+            self.is_defensive = True
+        else:
+            self.is_defensive = False
+
+
+        return features
+
+    def get_weights(self, game_state, action):
+        my_state = game_state.get_agent_state(self.index)
+        if self.is_defensive:
+            #defensive weights
+            weights = {'num_invaders': -1000,
+                       'distance_to_capsule': -50,
+                       'on_defense': 300,
+                       'invader_distance': -50,
+                       'stop': -2,
+                       'reverse': -2,
+                       'scared_ghost_time': 5,
+                       'distance_to_scared_ghost': -10,
+                       'is_scared': -200,
+                       'distance_to_attacking_pacman': 50}
+                       #'distance_to_home': -50}
+
+            if my_state.scared_timer < 3:
+                weights['distance_enemy_most_food'] = -1000
+            else:
+                weights['distance_enemy_most_food'] = -100
+
+            if self.get_score(game_state) == 0:
+                weights['distance_to_home'] = -100  # Grote weight om de middellijn te bewaken
+            else:
+                weights['distance_to_home'] = -1
+
+            return weights
+
+        else:
+            #offensive weights
+            weights =  {'num_invaders': -100,
+                        'successor_score': 100,
+                        'distance_to_food': -1,
+                        'ghost_really_close': 1000,
+                        'ghost_close': 50,
+                        'stop': -100,
+                        'scared_ghost_time': 5,
+                        'distance_to_scared_ghost': -100,
+                        'is_scared': -200,
+                        'distance_to_attacking_pacman': 50,
+                        'distance_to_home': -1 * (1+(self.food*10))}
+
+            if self.get_score(game_state) <= -1 * self.threshold:
+                weights['distance_to_enemy_capsule'] = -300
+            else:
+                weights['distance_to_enemy_capsule'] = -1
+
+            return weights
+
+
+
+class AggressiveHybridSwitch(ReflexCaptureAgent):
+    def __init__(self, index):
+        super().__init__(index)
+        self.threshold = 5 #5
+        self.food = 0
+        self.already_counted_food = set()
+        self.is_defensive = False
+
+    def food_on_enemy_side(self, food_position, game_state):
+        """
+        Check of food op de vijandelijke helft is.
+        """
+        mid_x = game_state.data.layout.width // 2
+        is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
+        return is_enemy_side
+
+
+    def pacman_on_own_side(self, game_state):
+        """
+        Check of de agent zich op zijn eigen helft bevindt.
+        """
+        mid_x = game_state.data.layout.width // 2
+        my_pos = game_state.get_agent_position(self.index)
+
+        if self.red:
+            return my_pos[0] < mid_x
+        else:
+            return my_pos[0] >= mid_x
+
+
+    def update_food(self, game_state):
+        """
+        Update self.food
+        """
+        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
+        prev_state = self.get_previous_observation()  # Vorige state
+        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
+
+
+        if current_pos == self.start or self.pacman_on_own_side(game_state):
+            self.food = 0
+
+        #if not my_state.is_pacman and self.is_defensive:
+        #    self.food = 0
+
+
+        if prev_state:
+            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
+            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+
+            #if 'already_counted_food' not in self.__dict__:
+            #    self.already_counted_food = set()
+
+            eaten_food = []  # geteld voedsel
+            for food in prev_food_list:
+                if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
+                    eaten_food.append(food)
+
+            for food in eaten_food:
+                if self.get_maze_distance(pacman_prev_pos, food) <= 1 and self.food_on_enemy_side(food, game_state):
+                    if food not in self.already_counted_food:  # Alleen optellen als het nog niet geteld is
+                        self.food += 1
+                        self.already_counted_food.add(food)
+
+
+
+        #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
+
+
+
+    def get_features(self, game_state, action):
+        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        features = util.Counter()
+        successor = self.get_successor(game_state, action)
+        food_list = self.get_food(successor).as_list()
+
+
+        # DEFENSIVE features
+        my_state = successor.get_agent_state(self.index)
+        my_pos = my_state.get_position()
+
+        def_capsules = self.get_capsules_you_are_defending(game_state)
+        if def_capsules:
+            min_distance_to_capsule = min(self.get_maze_distance(my_pos, capsule) for capsule in def_capsules)
+            features['distance_to_capsule'] = min_distance_to_capsule
+        else:
+            features['distance_to_capsule'] = 0
+
+
+        # Computes whether we're on defense (1) or offense (0)
+        features['on_defense'] = 1
+        if my_state.is_pacman: features['on_defense'] = 0
+
+        # Computes distance to invaders we can see
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
+        features['num_invaders'] = len(invaders)
+        if len(invaders) > 0:
+            dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
+            features['invader_distance'] = min(dists)
+
+        if action == Directions.STOP: features['stop'] = 1
+        rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
+
+        # OFFENSIVE features
+
+        features['successor_score'] = -len(food_list)
+
+        if len(food_list) > 0:
+            my_pos = successor.get_agent_state(self.index).get_position()
+            min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
+            features['distance_to_food'] = min_distance
+
+        off_capsules = self.get_capsules(game_state)
+        if off_capsules:
+            min_distance_to_capsule = min(self.get_maze_distance(my_pos, capsule) for capsule in off_capsules)
+            features['distance_to_enemy_capsule'] = min_distance_to_capsule
+        else:
+            features['distance_to_enemy_capsule'] = 0
+
+        # GHOST DISTANCE
+        defenders = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
+        #features['num_defenders'] = len(defenders)
+        if len(defenders) > 0:
+            dists = [self.get_maze_distance(my_pos, a.get_position()) for a in defenders]
+            mindist = min(dists)
+            if mindist < 3:
+                features['ghost_really_close'] = -100 * (3 - mindist)
+            else:
+                features['ghost_close'] = mindist
+
+        # ENEMY SCARED TIMER
+        opponents = self.get_opponents(game_state)
+        max_scared_time = 0
+        closest_scared_ghost_dist = float('inf')
+        for opponent in opponents:
+            ghost_state = game_state.get_agent_state(opponent)
+            if not ghost_state.is_pacman: #spook
+                scared_timer = ghost_state.scared_timer
+                max_scared_time = max(max_scared_time, scared_timer)
+                if scared_timer > 5:
+                    ghost_pos = ghost_state.get_position()
+                    if ghost_pos:
+                        dist = self.get_maze_distance(my_pos, ghost_pos)
+                        if dist < 7:
+                            closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
+                            features['distance_to_scared_ghost'] = closest_scared_ghost_dist * 50
+                        else:
+                            features['distance_to_scared_ghost'] = 0
+                else:
+                    features['distance_to_scared_ghost'] = 0
+        features['scared_ghost_time'] = max_scared_time
+
+        scared_ghosts = []
+        for opponent in opponents:
+            agent_state = game_state.get_agent_state(opponent)
+            if not agent_state.is_pacman:
+                scared_ghosts.append(agent_state)
+
+        if len(scared_ghosts) == 2 and all(ghost.scared_timer > 25 for ghost in scared_ghosts):
+            features['both_ghosts_scared_long_enough'] = 1
+        else:
+            features['both_ghosts_scared_long_enough'] = 0
+
+
+
+        # OUR SCARED TIMER
+        my_scared_timer = my_state.scared_timer
+        features['is_scared'] = 1 if my_scared_timer > 0 else 0
+
+        if my_scared_timer > 0:
+            closest_pacman_dist = float('inf')
+            for invader in invaders:
+                dist = self.get_maze_distance(my_pos, invader.get_position())
+                closest_pacman_dist = min(closest_pacman_dist, dist)
+            features['distance_to_attacking_pacman'] = closest_pacman_dist
+        else:
+            features['distance_to_attacking_pacman'] = 0
+
+
+        # DISTANCE TO HOME
+        mid_x = game_state.data.layout.width // 2
+        if self.red:
+            target_range = range(mid_x - 2, mid_x)  # Left side 2 columns
+        else:
+            target_range = range(mid_x, mid_x + 2)  # Right side 2 columns
+
+        best_distance = float('inf')
+
+        # All possible (x, y) positions on our side
+        for x in target_range:
+            for y in range(game_state.data.layout.height):
+                if not game_state.has_wall(x, y):  # Controleer of er geen muur is
+                    distance = self.get_maze_distance(my_pos, (x, y))
+                    if distance < best_distance:
+                        best_distance = distance
+
+        if self.food > 1:
+            features['distance_to_home'] = best_distance
+        else:
+            features['distance_to_home'] = 0
+        # features['distance_to_home'] = best_distance if self.food > 1 else 0
+
+        # ENEMY FOOD
+        enemies = []
+        for i in self.get_opponents(game_state):
+            enemy_state = game_state.get_agent_state(i)
+            enemies.append(enemy_state)
+
+        distance_enemy_most_food = 0
+        most_enemy_food = 0
+
+        for enemy in enemies:
+            if enemy.is_pacman and enemy.get_position() is not None:
+                if enemy.num_carrying > most_enemy_food:
+                    most_enemy_food = enemy.num_carrying
+                    distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
+
+        if most_enemy_food >= 5:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 20  # super high prio
+        if most_enemy_food >= 4:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 10  # high prio
+        elif most_enemy_food >= 3:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 5  # mid prio
+        elif most_enemy_food >= 1:
+            features['distance_enemy_most_food'] = distance_enemy_most_food * 3  # low prio
+        else:
+            features['distance_enemy_most_food'] = 0  # no prio
+
+
+        # STRATEGY
+        enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
+        enemies_on_our_side = sum(1 for enemy in enemies if enemy.is_pacman and enemy.get_position() is not None)
+
+        enemies_far_from_mid = True
+        for enemy in enemies:
+            if enemy.get_position() is not None:
+                enemy_x, enemy_y = enemy.get_position()
+                distance_to_mid = abs(mid_x - enemy_x)
+                if distance_to_mid <= 5:
+                    enemies_far_from_mid = False
+                    break
+
+
+        if most_enemy_food >= 4 or self.food > 5 or len(invaders) > 1:
+            self.is_defensive = True
+        elif enemies_on_our_side >= 1 and self.get_score(game_state) >= self.threshold:
+            self.is_defensive = True
+        elif enemies_on_their_side == len(enemies) and self.food == 0 and enemies_far_from_mid:
+            self.is_defensive = False
+        elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
+            self.is_defensive = True
+        elif self.get_score(game_state) >= self.threshold:
+            self.is_defensive = True
+        else:
+            self.is_defensive = False
+
+
+        return features
+
+    def get_weights(self, game_state, action):
+        my_state = game_state.get_agent_state(self.index)
+        if self.is_defensive and my_state.scared_timer > 4:
+            # offensive weights
+            return {'num_invaders': -100,
+                    'successor_score': 100,
+                    'distance_to_food': -1,
+                    'ghost_really_close': 500,
+                    'ghost_close': 50,
+                    'stop': -100,
+                    'scared_ghost_time': 5,
+                    'distance_to_scared_ghost': -10,
+                    'is_scared': -200,
+                    'distance_to_attacking_pacman': 50,
+                    'distance_to_home': -50 * self.food,
+                    'distance_to_enemy_capsule': -50}
+
+        elif self.is_defensive:
+            #defensive weights
+            weights = {'num_invaders': -1000,
+                        #'distance_to_capsule': -2,
+                        'on_defense': 1000,
+                        'invader_distance': -50,
+                        'stop': -2,
+                        'reverse': -2,
+                        'scared_ghost_time': 5,
+                        'distance_to_scared_ghost': -10,
+                        'is_scared': -200,
+                        'distance_to_attacking_pacman': 20,
+                        'distance_to_home': -50,
+                        'both_ghosts_scared_long_enough': 100}
+
+            if my_state.scared_timer == 0:
+                weights['distance_enemy_most_food'] = -1000
+            else:
+                weights['distance_enemy_most_food'] = -100
+
+
+            return weights
+
+
+        else:
+            #offensive weights
+            weights =  {'num_invaders': -100,
+                        'successor_score': 100,
+                        'distance_to_food': -1,
+                        'ghost_really_close': 1000,
+                        'ghost_close': 50,
+                        'stop': -100,
+                        'scared_ghost_time': 5,
+                        'distance_to_scared_ghost': -100,
+                        'is_scared': -200,
+                        'distance_to_attacking_pacman': 50,
+                        'distance_to_home': -50 * self.food}
+
+            if self.get_score(game_state) <= -1 * self.threshold:
+                weights['distance_to_enemy_capsule'] = -300
+            else:
+                weights['distance_to_enemy_capsule'] = -1
+
+            return weights
+
+
+
+class AggressiveHybridDefence(ReflexCaptureAgent):
+    def __init__(self, index):
+        super().__init__(index)
+        self.threshold = 5 #5
+        self.food = 0
+        self.already_counted_food = set()
+        self.is_defensive = False
+        self.both_scared = 0
+
+    def food_on_enemy_side(self, food_position, game_state):
+        """
+        Check of food op de vijandelijke helft is.
+        """
+        mid_x = game_state.data.layout.width // 2
+        is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
+        return is_enemy_side
+
+
+    def pacman_on_own_side(self, game_state):
+        """
+        Check of de agent zich op zijn eigen helft bevindt.
+        """
+        mid_x = game_state.data.layout.width // 2
+        my_pos = game_state.get_agent_position(self.index)
+
+        if self.red:
+            return my_pos[0] < mid_x
+        else:
+            return my_pos[0] >= mid_x
+
+
+    def update_food(self, game_state):
+        """
+        Update self.food
+        """
+        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
+        prev_state = self.get_previous_observation()  # Vorige state
+        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
+
+
+        if current_pos == self.start or self.pacman_on_own_side(game_state):
+            self.food = 0
+
+        #if not my_state.is_pacman and self.is_defensive:
+        #    self.food = 0
+
+
+        if prev_state:
+            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
+            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+
+            #if 'already_counted_food' not in self.__dict__:
+            #    self.already_counted_food = set()
+
+            eaten_food = []  # geteld voedsel
+            for food in prev_food_list:
+                if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
+                    eaten_food.append(food)
+
+            for food in eaten_food:
+                if self.get_maze_distance(pacman_prev_pos, food) <= 1 and self.food_on_enemy_side(food, game_state):
+                    if food not in self.already_counted_food:  # Alleen optellen als het nog niet geteld is
+                        self.food += 1
+                        self.already_counted_food.add(food)
+
+
+
+        #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
+
+
+
+    def get_features(self, game_state, action):
+        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        features = util.Counter()
+        successor = self.get_successor(game_state, action)
+        food_list = self.get_food(successor).as_list()
+
+
+        # DEFENSIVE features
+        my_state = successor.get_agent_state(self.index)
+        my_pos = my_state.get_position()
+
+        capsules = self.get_capsules_you_are_defending(game_state)
+        if capsules and self.get_score(game_state) != 0:
+            min_distance_to_capsule = min(self.get_maze_distance(my_pos, capsule) for capsule in capsules)
+            features['distance_to_capsule'] = min_distance_to_capsule
+        else:
+            features['distance_to_capsule'] = 0
+
+
+        # Computes whether we're on defense (1) or offense (0)
+        features['on_defense'] = 1
+        if my_state.is_pacman: features['on_defense'] = 0
+
+        # Computes distance to invaders we can see
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
+        features['num_invaders'] = len(invaders)
+        if len(invaders) > 0:
+            dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
+            features['invader_distance'] = min(dists)
+
+        if action == Directions.STOP: features['stop'] = 1
+        rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
+
+        # OFFENSIVE features
+
+        features['successor_score'] = -len(food_list)
+
+        if len(food_list) > 0:
+            my_pos = successor.get_agent_state(self.index).get_position()
+            min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
+            features['distance_to_food'] = min_distance
+
+        off_capsules = self.get_capsules(game_state)
+        if off_capsules:
+            min_distance_to_capsule = min(self.get_maze_distance(my_pos, capsule) for capsule in off_capsules)
+            features['distance_to_enemy_capsule'] = min_distance_to_capsule
+        else:
+            features['distance_to_enemy_capsule'] = 0
+
+        # GHOST DISTANCE
+        defenders = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
+        #features['num_defenders'] = len(defenders)
+        if len(defenders) > 0:
+            dists = [self.get_maze_distance(my_pos, a.get_position()) for a in defenders]
+            mindist = min(dists)
+            if mindist < 3:
+                features['ghost_really_close'] = -100 * (3 - mindist)
+            else:
+                features['ghost_close'] = mindist
+
+        # ENEMY SCARED TIMER
+        opponents = self.get_opponents(game_state)
+        max_scared_time = 0
+        closest_scared_ghost_dist = float('inf')
+        for opponent in opponents:
+            ghost_state = game_state.get_agent_state(opponent)
+            if not ghost_state.is_pacman: #spook
+                scared_timer = ghost_state.scared_timer
+                max_scared_time = max(max_scared_time, scared_timer)
+                if scared_timer > 5:
+                    ghost_pos = ghost_state.get_position()
+                    if ghost_pos:
+                        dist = self.get_maze_distance(my_pos, ghost_pos)
+                        if dist < 7:
+                            closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
+                            features['distance_to_scared_ghost'] = closest_scared_ghost_dist * 50
+                        else:
+                            features['distance_to_scared_ghost'] = 0
+                else:
+                    features['distance_to_scared_ghost'] = 0
+        features['scared_ghost_time'] = max_scared_time
+
+        scared_ghosts = []
+        for opponent in opponents:
+            agent_state = game_state.get_agent_state(opponent)
+            if not agent_state.is_pacman:
+                scared_ghosts.append(agent_state)
+
+        if len(scared_ghosts) == 2 and all(ghost.scared_timer > 25 for ghost in scared_ghosts):
+            features['both_ghosts_scared_long_enough'] = 1
+        else:
+            features['both_ghosts_scared_long_enough'] = 0
+
+
+        # OUR SCARED TIMER
+        my_scared_timer = my_state.scared_timer
+        features['is_scared'] = 1 if my_scared_timer > 0 else 0
+
+        if my_scared_timer > 0:
+            closest_pacman_dist = float('inf')
+            for invader in invaders:
+                dist = self.get_maze_distance(my_pos, invader.get_position())
+                closest_pacman_dist = min(closest_pacman_dist, dist)
+            features['distance_to_attacking_pacman'] = closest_pacman_dist
+        else:
+            features['distance_to_attacking_pacman'] = 0
+
+
+        # DISTANCE TO HOME
+        mid_x = game_state.data.layout.width // 2
+        if self.red:
+            target_range = range(mid_x - 2, mid_x)  # Left side 2 columns
+        else:
+            target_range = range(mid_x, mid_x + 2)  # Right side 2 columns
+
+        best_distance = float('inf')
+
+        # All possible (x, y) positions on our side
+        for x in target_range:
+            for y in range(game_state.data.layout.height):
+                if not game_state.has_wall(x, y):  # Controleer of er geen muur is
+                    distance = self.get_maze_distance(my_pos, (x, y))
+                    if distance < best_distance:
+                        best_distance = distance
+
         if self.food > 1:
             features['distance_to_home'] = best_distance
         else:
@@ -730,8 +1352,10 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
 
         # STRATEGY
         enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
+        if features['both_ghosts_scared_long_enough'] == 1:
+            self.both_scared = 1
 
-        if most_enemy_food >= 4 or self.food > 2 or len(invaders) > 1:
+        elif most_enemy_food >= 4 or self.food > 2 or len(invaders) > 1:
             self.is_defensive = True
         elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
             self.is_defensive = True
@@ -745,7 +1369,15 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
 
     def get_weights(self, game_state, action):
         my_state = game_state.get_agent_state(self.index)
-        if self.is_defensive:
+        if self.both_scared == 1:
+            # Agressief voedsel pakken
+            return {
+                'successor_score': 500,
+                'distance_to_food': -10,
+                'stop': -200,
+            }
+
+        elif self.is_defensive:
             #defensive weights
             weights = {'num_invaders': -1000,
                        'distance_to_capsule': -50,
@@ -756,7 +1388,8 @@ class HybridReflexAgentDefence(ReflexCaptureAgent):
                        'scared_ghost_time': 5,
                        'distance_to_scared_ghost': -10,
                        'is_scared': -200,
-                       'distance_to_attacking_pacman': 50}
+                       'distance_to_attacking_pacman': 50,
+                       'both_ghosts_scared_long_enough': 100}
                        #'distance_to_home': -50}
 
             if my_state.scared_timer < 3:
