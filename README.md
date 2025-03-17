@@ -11,4 +11,4 @@
 **Team members:**
 
 * 0612378 - Robin Schildermans - robin.schildermans@vub.be - Github: Robin020203 (184389131)
-* xxxxxxx - Laurens ten Wolde - laurens.loic.ten.wolde@vub.be - Github: Laurens-tW (132951412)
+* 0609361 - Laurens ten Wolde - laurens.loic.ten.wolde@vub.be - Github: Laurens-tW (132951412)
