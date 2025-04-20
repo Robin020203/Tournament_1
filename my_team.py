@@ -198,6 +198,35 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
 
 
 class HybridSwitch(ReflexCaptureAgent):
+    """
+    A hybrid agent that can be defensive and offensive:
+
+    This agent will start offensive and can become defensive in multiple ways.
+    The agent can switch back to offensive mode if the other team isn't a threat.
+    These rules apply:
+
+        1) DEFENSIVE if one of these rules apply:
+            if there is an enemy with 4 (or more) food
+            if we carry more than 4 food
+            if there is more than 1 enemy on our side
+
+        2) Else DEFENSIVE if this rule apply:
+            if there is at least 1 enemy on our side and our score is above (or equal to) the threshold
+
+        3) Else OFFENSIVE if one of these rules apply:
+            if both enemies are on their side (and far enough from mid) and there is no food wa carry
+
+        4) Else DEFENSIVE if this rule apply:
+            if this agent is on our own side and there is at least 1 enemy on our side
+
+        5) Else DEFENSIVE if this rule apply, else OFFENSIVE:
+            if the score is above (or equal to) the threshold
+    """
+
+    # threshold (if the score goes above this number, the behaviour of the agent can change)
+    # food (the pellets the agent ate that has not been brought back yet)
+    # already_counted_food (will store how much pellets there were before the agent took its action, preventing double counting)
+    # is_defensive (mode of the agent: if this is true, the agent is defensive)
     def __init__(self, index):
         super().__init__(index)
         self.threshold = 6 #5
@@ -207,7 +236,7 @@ class HybridSwitch(ReflexCaptureAgent):
 
     def food_on_enemy_side(self, food_position, game_state):
         """
-        Check of food op de vijandelijke helft is.
+        Check if food is on enemy side.
         """
         mid_x = game_state.data.layout.width // 2
         is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
@@ -216,7 +245,7 @@ class HybridSwitch(ReflexCaptureAgent):
 
     def pacman_on_own_side(self, game_state):
         """
-        Check of de agent zich op zijn eigen helft bevindt.
+        Check if the agent is on his own side.
         """
         mid_x = game_state.data.layout.width // 2
         my_pos = game_state.get_agent_position(self.index)
@@ -229,38 +258,31 @@ class HybridSwitch(ReflexCaptureAgent):
 
     def update_food(self, game_state):
         """
-        Update self.food
+        Update self.food by counting the food we pick up before bringing back to our own side
         """
-        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
-        prev_state = self.get_previous_observation()  # Vorige state
-        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
+        current_food_list = self.get_food(game_state).as_list()
+        prev_state = self.get_previous_observation()
+        current_pos = game_state.get_agent_position(self.index)
 
-
+        # Pacman on own side means we are not carrying food
         if current_pos == self.start or self.pacman_on_own_side(game_state):
             self.food = 0
 
-        #if not my_state.is_pacman and self.is_defensive:
-        #    self.food = 0
-
-
         if prev_state:
-            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
-            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+            prev_food_list = self.get_food(prev_state).as_list()
+            pacman_prev_pos = prev_state.get_agent_position(self.index)
 
-            #if 'already_counted_food' not in self.__dict__:
-            #    self.already_counted_food = set()
-
-            eaten_food = []  # geteld voedsel
+            eaten_food = []  # List to keep track of food we ate
             for food in prev_food_list:
-                if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
+                if food not in current_food_list and food not in self.already_counted_food:
+                    # If food is gone now and not counted yet, we put it in the list
                     eaten_food.append(food)
 
             for food in eaten_food:
                 if self.get_maze_distance(pacman_prev_pos, food) <= 1 and self.food_on_enemy_side(food, game_state):
-                    if food not in self.already_counted_food:  # Alleen optellen als het nog niet geteld is
+                    if food not in self.already_counted_food:  # Only count if it isn't counted
                         self.food += 1
                         self.already_counted_food.add(food)
-
 
 
         #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
@@ -268,7 +290,8 @@ class HybridSwitch(ReflexCaptureAgent):
 
 
     def get_features(self, game_state, action):
-        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        # Update food status before we make decisions
+        self.update_food(game_state)
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
@@ -335,7 +358,7 @@ class HybridSwitch(ReflexCaptureAgent):
         closest_scared_ghost_dist = float('inf')
         for opponent in opponents:
             ghost_state = game_state.get_agent_state(opponent)
-            if not ghost_state.is_pacman: #spook
+            if not ghost_state.is_pacman: # ghost
                 scared_timer = ghost_state.scared_timer
                 max_scared_time = max(max_scared_time, scared_timer)
                 if scared_timer > 5:
@@ -365,7 +388,7 @@ class HybridSwitch(ReflexCaptureAgent):
             features['distance_to_attacking_pacman'] = 0
 
 
-        # DISTANCE TO HOME
+        # DISTANCE TO HOME (home is defined as a zone close to mid)
         mid_x = game_state.data.layout.width // 2
         if self.red:
             target_range = range(mid_x - 2, mid_x)  # Left side 2 columns
@@ -377,7 +400,7 @@ class HybridSwitch(ReflexCaptureAgent):
         # All possible (x, y) positions on our side
         for x in target_range:
             for y in range(game_state.data.layout.height):
-                if not game_state.has_wall(x, y):  # Controleer of er geen muur is
+                if not game_state.has_wall(x, y):  # Check if there is not a wall
                     distance = self.get_maze_distance(my_pos, (x, y))
                     if distance < best_distance:
                         best_distance = distance
@@ -507,6 +530,31 @@ class HybridSwitch(ReflexCaptureAgent):
 
 
 class HybridDefence(ReflexCaptureAgent):
+    """
+    A hybrid agent that can be defensive and offensive:
+
+    This agent will start offensive and can become defensive in multiple ways.
+    The agent can never switch back to offensive if the threshold is reached.
+    These rules apply:
+
+        1) DEFENSIVE if one of these rules apply:
+            if there is an enemy with 4 (or more) food
+            if we carry more than 2 food
+            if there is more than 1 enemy on our side
+
+        2) Else DEFENSIVE if this rule apply:
+            if this agent is on our own side and there is at least 1 enemy on our side
+
+        3) Else DEFENSIVE if this rule apply:
+            if the score is above (or equal to) the threshold
+
+        4) Else OFFENSIVE
+    """
+
+    # threshold (if the score goes above this number, the behaviour of the agent can change)
+    # food (the pellets the agent ate that has not been brought back yet)
+    # already_counted_food (will store how much pellets there were before the agent took its action, preventing double counting)
+    # is_defensive (mode of the agent: if this is true, the agent is defensive)
     def __init__(self, index):
         super().__init__(index)
         self.threshold = 2 #5
@@ -516,7 +564,7 @@ class HybridDefence(ReflexCaptureAgent):
 
     def food_on_enemy_side(self, food_position, game_state):
         """
-        Check of food op de vijandelijke helft is.
+        Check if food is on enemy side
         """
         mid_x = game_state.data.layout.width // 2
         is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
@@ -525,7 +573,7 @@ class HybridDefence(ReflexCaptureAgent):
 
     def pacman_on_own_side(self, game_state):
         """
-        Check of de agent zich op zijn eigen helft bevindt.
+        Check if the agent is on his own side
         """
         mid_x = game_state.data.layout.width // 2
         my_pos = game_state.get_agent_position(self.index)
@@ -540,26 +588,18 @@ class HybridDefence(ReflexCaptureAgent):
         """
         Update self.food
         """
-        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
-        prev_state = self.get_previous_observation()  # Vorige state
-        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
-
+        current_food_list = self.get_food(game_state).as_list()
+        prev_state = self.get_previous_observation()
+        current_pos = game_state.get_agent_position(self.index)
 
         if current_pos == self.start or self.pacman_on_own_side(game_state):
             self.food = 0
 
-        #if not my_state.is_pacman and self.is_defensive:
-        #    self.food = 0
-
-
         if prev_state:
-            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
-            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+            prev_food_list = self.get_food(prev_state).as_list()
+            pacman_prev_pos = prev_state.get_agent_position(self.index)
 
-            #if 'already_counted_food' not in self.__dict__:
-            #    self.already_counted_food = set()
-
-            eaten_food = []  # geteld voedsel
+            eaten_food = []
             for food in prev_food_list:
                 if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
                     eaten_food.append(food)
@@ -570,14 +610,12 @@ class HybridDefence(ReflexCaptureAgent):
                         self.food += 1
                         self.already_counted_food.add(food)
 
-
-
         #print(f"Agent {self.index} heeft {self.food} voedsel verzameld")  # Debugging
 
 
 
     def get_features(self, game_state, action):
-        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        self.update_food(game_state)  # Update food status before we make decisions
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
@@ -674,7 +712,7 @@ class HybridDefence(ReflexCaptureAgent):
             features['distance_to_attacking_pacman'] = 0
 
 
-        # DISTANCE TO HOME
+        # DISTANCE TO HOME (home is a zone close to mid)
         mid_x = game_state.data.layout.width // 2
         if self.red:
             target_range = range(mid_x - 2, mid_x)  # Left side 2 columns
@@ -686,7 +724,7 @@ class HybridDefence(ReflexCaptureAgent):
         # All possible (x, y) positions on our side
         for x in target_range:
             for y in range(game_state.data.layout.height):
-                if not game_state.has_wall(x, y):  # Controleer of er geen muur is
+                if not game_state.has_wall(x, y):  # For positions that are not walls
                     distance = self.get_maze_distance(my_pos, (x, y))
                     if distance < best_distance:
                         best_distance = distance
@@ -762,7 +800,7 @@ class HybridDefence(ReflexCaptureAgent):
                 weights['distance_enemy_most_food'] = -100
 
             if self.get_score(game_state) == 0:
-                weights['distance_to_home'] = -100  # Grote weight om de middellijn te bewaken
+                weights['distance_to_home'] = -100  # Big weight to guard mid
             else:
                 weights['distance_to_home'] = -1
 
@@ -792,6 +830,19 @@ class HybridDefence(ReflexCaptureAgent):
 
 
 class AggressiveHybridSwitch(ReflexCaptureAgent):
+    """
+    An aggressive variant of the HybridSwitch agent from earlier:
+
+    This agent will play way more aggressive than the HybridSwitch agent.
+    from the start, there will already be a reward for taking opponents capsules to make them scared.
+    If they're scared timer is high enough, this agent goes all in to score as much as possible.
+
+    """
+
+    # threshold (if the score goes above this number, the behaviour of the agent can change)
+    # food (the pellets the agent ate that has not been brought back yet)
+    # already_counted_food (will store how much pellets there were before the agent took its action, preventing double counting)
+    # is_defensive (mode of the agent: if this is true, the agent is defensive)
     def __init__(self, index):
         super().__init__(index)
         self.threshold = 5 #5
@@ -801,7 +852,7 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
 
     def food_on_enemy_side(self, food_position, game_state):
         """
-        Check of food op de vijandelijke helft is.
+        Check if food is on enemy side.
         """
         mid_x = game_state.data.layout.width // 2
         is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
@@ -810,7 +861,7 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
 
     def pacman_on_own_side(self, game_state):
         """
-        Check of de agent zich op zijn eigen helft bevindt.
+        Check if agent is on own side.
         """
         mid_x = game_state.data.layout.width // 2
         my_pos = game_state.get_agent_position(self.index)
@@ -825,26 +876,21 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
         """
         Update self.food
         """
-        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
-        prev_state = self.get_previous_observation()  # Vorige state
-        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
+        current_food_list = self.get_food(game_state).as_list()
+        prev_state = self.get_previous_observation()
+        current_pos = game_state.get_agent_position(self.index)
 
 
         if current_pos == self.start or self.pacman_on_own_side(game_state):
             self.food = 0
 
-        #if not my_state.is_pacman and self.is_defensive:
-        #    self.food = 0
-
 
         if prev_state:
-            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
-            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+            prev_food_list = self.get_food(prev_state).as_list()
+            pacman_prev_pos = prev_state.get_agent_position(self.index)
 
-            #if 'already_counted_food' not in self.__dict__:
-            #    self.already_counted_food = set()
 
-            eaten_food = []  # geteld voedsel
+            eaten_food = []  # counted food (list)
             for food in prev_food_list:
                 if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
                     eaten_food.append(food)
@@ -862,7 +908,7 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
 
 
     def get_features(self, game_state, action):
-        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        self.update_food(game_state)  # Update food status before we make a decision
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
@@ -929,7 +975,7 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
         closest_scared_ghost_dist = float('inf')
         for opponent in opponents:
             ghost_state = game_state.get_agent_state(opponent)
-            if not ghost_state.is_pacman: #spook
+            if not ghost_state.is_pacman: #ghost
                 scared_timer = ghost_state.scared_timer
                 max_scared_time = max(max_scared_time, scared_timer)
                 if scared_timer > 5:
@@ -1117,6 +1163,20 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
 
 
 class AggressiveHybridDefence(ReflexCaptureAgent):
+    """
+    An aggressive variant of the HybridDefence agent from earlier:
+
+    This agent will play way more aggressive than the HybridDefence agent.
+    from the start, there will already be a reward for taking opponents capsules to make them scared.
+    If they're scared timer is high enough, this agent goes all in to score as much as possible.
+
+    """
+
+    # threshold (if the score goes above this number, the behaviour of the agent can change)
+    # food (the pellets the agent ate that has not been brought back yet)
+    # already_counted_food (will store how much pellets there were before the agent took its action, preventing double counting)
+    # is_defensive (mode of the agent: if this is true, the agent is defensive)
+    # both_scared: if both enemies are scared, this will turn into 1 so we can give more aggressive weights.
     def __init__(self, index):
         super().__init__(index)
         self.threshold = 5 #5
@@ -1309,7 +1369,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
         # All possible (x, y) positions on our side
         for x in target_range:
             for y in range(game_state.data.layout.height):
-                if not game_state.has_wall(x, y):  # Controleer of er geen muur is
+                if not game_state.has_wall(x, y):  # Check if it's not a wall
                     distance = self.get_maze_distance(my_pos, (x, y))
                     if distance < best_distance:
                         best_distance = distance
@@ -1370,7 +1430,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
     def get_weights(self, game_state, action):
         my_state = game_state.get_agent_state(self.index)
         if self.both_scared == 1:
-            # Agressief voedsel pakken
+            # Agressive food capturing because both ghosts are scared
             return {
                 'successor_score': 500,
                 'distance_to_food': -10,
@@ -1398,7 +1458,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
                 weights['distance_enemy_most_food'] = -100
 
             if self.get_score(game_state) == 0:
-                weights['distance_to_home'] = -300  # Grote weight om de middellijn te bewaken
+                weights['distance_to_home'] = -300  # Big weight to guard midline
             else:
                 weights['distance_to_home'] = -50
 
