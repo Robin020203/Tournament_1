@@ -33,6 +33,7 @@ Only the default libraries delivered with the task were used:
 - capture_agents/CaptureAgent
 - game/Directions
 - util/nearest_point
-- To start a game against the baseline team, use the following command:
+
+To start a game against the baseline team, use the following command:
 
 python capture.py -r agents/team_name_1/my_team.py -b baseline_team
