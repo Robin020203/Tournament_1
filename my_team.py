@@ -1206,7 +1206,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
 
     def food_on_enemy_side(self, food_position, game_state):
         """
-        Check of food op de vijandelijke helft is.
+        Check if food is on enemy side.
         """
         mid_x = game_state.data.layout.width // 2
         is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
@@ -1215,7 +1215,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
 
     def pacman_on_own_side(self, game_state):
         """
-        Check of de agent zich op zijn eigen helft bevindt.
+        Check if de agent is on his own side.
         """
         mid_x = game_state.data.layout.width // 2
         my_pos = game_state.get_agent_position(self.index)
@@ -1230,33 +1230,26 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
         """
         Update self.food
         """
-        current_food_list = self.get_food(game_state).as_list()  # Huidige voedselpositie
-        prev_state = self.get_previous_observation()  # Vorige state
-        current_pos = game_state.get_agent_position(self.index)  # Huidige positie
+        current_food_list = self.get_food(game_state).as_list()
+        prev_state = self.get_previous_observation()
+        current_pos = game_state.get_agent_position(self.index)
 
 
         if current_pos == self.start or self.pacman_on_own_side(game_state):
             self.food = 0
 
-        #if not my_state.is_pacman and self.is_defensive:
-        #    self.food = 0
-
-
         if prev_state:
-            prev_food_list = self.get_food(prev_state).as_list()  # Vorige foodlist
-            pacman_prev_pos = prev_state.get_agent_position(self.index)  # Vorige positie
+            prev_food_list = self.get_food(prev_state).as_list()
+            pacman_prev_pos = prev_state.get_agent_position(self.index)
 
-            #if 'already_counted_food' not in self.__dict__:
-            #    self.already_counted_food = set()
-
-            eaten_food = []  # geteld voedsel
+            eaten_food = []  # counted food list
             for food in prev_food_list:
-                if food not in current_food_list and food not in self.already_counted_food:  # Als voedsel nu weg is en nog niet geteld is
+                if food not in current_food_list and food not in self.already_counted_food:  # If food is gone now and it's not counted yet
                     eaten_food.append(food)
 
             for food in eaten_food:
                 if self.get_maze_distance(pacman_prev_pos, food) <= 1 and self.food_on_enemy_side(food, game_state):
-                    if food not in self.already_counted_food:  # Alleen optellen als het nog niet geteld is
+                    if food not in self.already_counted_food:  # Only add if not counted yet
                         self.food += 1
                         self.already_counted_food.add(food)
 
@@ -1267,7 +1260,7 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
 
 
     def get_features(self, game_state, action):
-        self.update_food(game_state)  # Update voedselstatus voordat we beslissingen maken
+        self.update_food(game_state)  # Update food status before decision making
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
