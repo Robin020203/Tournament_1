@@ -234,6 +234,7 @@ class HybridSwitch(ReflexCaptureAgent):
         self.already_counted_food = set()
         self.is_defensive = False
 
+    # Territory related help function
     def food_on_enemy_side(self, food_position, game_state):
         """
         Check if food is on enemy side.
@@ -242,7 +243,7 @@ class HybridSwitch(ReflexCaptureAgent):
         is_enemy_side = (food_position[0] >= mid_x) if self.red else (food_position[0] < mid_x)
         return is_enemy_side
 
-
+    # Territory related help function
     def pacman_on_own_side(self, game_state):
         """
         Check if the agent is on his own side.
@@ -255,7 +256,7 @@ class HybridSwitch(ReflexCaptureAgent):
         else:
             return my_pos[0] >= mid_x
 
-
+    # Updates food carrying status
     def update_food(self, game_state):
         """
         Update self.food by counting the food we pick up before bringing back to our own side
@@ -264,11 +265,12 @@ class HybridSwitch(ReflexCaptureAgent):
         prev_state = self.get_previous_observation()
         current_pos = game_state.get_agent_position(self.index)
 
-        # Pacman on own side means we are not carrying food
+        # Reset if on home side or starting position
         if current_pos == self.start or self.pacman_on_own_side(game_state):
             self.food = 0
 
         if prev_state:
+            # Detect eaten food by comparing previous and current states
             prev_food_list = self.get_food(prev_state).as_list()
             pacman_prev_pos = prev_state.get_agent_position(self.index)
 
@@ -278,6 +280,7 @@ class HybridSwitch(ReflexCaptureAgent):
                     # If food is gone now and not counted yet, we put it in the list
                     eaten_food.append(food)
 
+            # Count valid food collected on enemy side
             for food in eaten_food:
                 if self.get_maze_distance(pacman_prev_pos, food) <= 1 and self.food_on_enemy_side(food, game_state):
                     if food not in self.already_counted_food:  # Only count if it isn't counted
@@ -344,27 +347,35 @@ class HybridSwitch(ReflexCaptureAgent):
         # GHOST DISTANCE
         defenders = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
         #features['num_defenders'] = len(defenders)
+
         if len(defenders) > 0:
+            # Calculate distances to all visible enemy ghosts
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in defenders]
             mindist = min(dists)
             if mindist < 3:
+                # Danger zone (within 3 tiles)
                 features['ghost_really_close'] = -100 * (3 - mindist)
             else:
+                # Not in danger zone
                 features['ghost_close'] = mindist
 
         # ENEMY SCARED TIMER
         opponents = self.get_opponents(game_state)
         max_scared_time = 0
         closest_scared_ghost_dist = float('inf')
+
         for opponent in opponents:
             ghost_state = game_state.get_agent_state(opponent)
-            if not ghost_state.is_pacman: # ghost
+            # Only for ghosts (not pacmans)
+            if not ghost_state.is_pacman:
                 scared_timer = ghost_state.scared_timer
                 max_scared_time = max(max_scared_time, scared_timer)
+                # Only engage if ghost is scared for more than 5 moves
                 if scared_timer > 5:
                     ghost_pos = ghost_state.get_position()
                     if ghost_pos:
                         dist = self.get_maze_distance(my_pos, ghost_pos)
+                        # Consider ghosts within 7 tiles as targets
                         if dist < 7:
                             closest_scared_ghost_dist = min(closest_scared_ghost_dist, dist)
                             features['distance_to_scared_ghost'] = closest_scared_ghost_dist * 50
@@ -376,16 +387,19 @@ class HybridSwitch(ReflexCaptureAgent):
 
         # OUR SCARED TIMER
         my_scared_timer = my_state.scared_timer
+
+        # Indicating if we're currently 'scared' or not
         features['is_scared'] = 1 if my_scared_timer > 0 else 0
 
         if my_scared_timer > 0:
+            # When scared, track distance to nearest enemy pacman (threat)
             closest_pacman_dist = float('inf')
             for invader in invaders:
                 dist = self.get_maze_distance(my_pos, invader.get_position())
                 closest_pacman_dist = min(closest_pacman_dist, dist)
             features['distance_to_attacking_pacman'] = closest_pacman_dist
         else:
-            features['distance_to_attacking_pacman'] = 0
+            features['distance_to_attacking_pacman'] = 0 # No threat when not scared
 
 
         # DISTANCE TO HOME (home is defined as a zone close to mid)
@@ -417,12 +431,14 @@ class HybridSwitch(ReflexCaptureAgent):
         distance_enemy_most_food = 0
         most_enemy_food = 0
 
+        # Keep track of the most food carrying by a single agent
         for enemy in enemies:
             if enemy.is_pacman and enemy.get_position() is not None:
                 if enemy.num_carrying > most_enemy_food:
                     most_enemy_food = enemy.num_carrying
                     distance_enemy_most_food = self.get_maze_distance(my_pos, enemy.get_position())
 
+        # The more food the enemy with the most food is carrying, the higher the prio to take him down
         if most_enemy_food >= 6:
             features['distance_enemy_most_food'] = distance_enemy_most_food * 100  # highest prio
         elif most_enemy_food >= 5:
@@ -441,6 +457,7 @@ class HybridSwitch(ReflexCaptureAgent):
         enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
         enemies_on_our_side = sum(1 for enemy in enemies if enemy.is_pacman and enemy.get_position() is not None)
 
+        # If the distance from an enemy to mid is less or equal to 5, enemies_far_from_mid will turn into false
         enemies_far_from_mid = True
         for enemy in enemies:
             if enemy.get_position() is not None:
@@ -450,6 +467,7 @@ class HybridSwitch(ReflexCaptureAgent):
                     enemies_far_from_mid = False
                     break
 
+        # Rules when this agent will turn defensive or offensive
         if most_enemy_food >= 4 or self.food > 4 or enemies_on_our_side > 1:
             self.is_defensive = True
         elif enemies_on_our_side >= 1 and self.get_score(game_state) >= self.threshold:
@@ -766,6 +784,7 @@ class HybridDefence(ReflexCaptureAgent):
         enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
         enemies_on_our_side = sum(1 for enemy in enemies if enemy.is_pacman and enemy.get_position() is not None)
 
+        # Rules when this agent will turn defensive or offensive
         if most_enemy_food >= 4 or self.food > 2 or enemies_on_our_side > 1:
             self.is_defensive = True
         elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
@@ -1081,7 +1100,7 @@ class AggressiveHybridSwitch(ReflexCaptureAgent):
                     enemies_far_from_mid = False
                     break
 
-
+        # Rules when this agent will turn defensive or offensive
         if most_enemy_food >= 4 or self.food > 5 or len(invaders) > 1:
             self.is_defensive = True
         elif enemies_on_our_side >= 1 and self.get_score(game_state) >= self.threshold:
@@ -1412,9 +1431,18 @@ class AggressiveHybridDefence(ReflexCaptureAgent):
 
         # STRATEGY
         enemies_on_their_side = sum(1 for enemy in enemies if not enemy.is_pacman)
+
+        # Rules when this agent will turn defensive or offensive
         if features['both_ghosts_scared_long_enough'] == 1:
             self.both_scared = 1
 
+        # !
+        # !
+        # !
+        # !
+        # !
+        # !
+        # THIS should be an if, BUT I wasn't allow to change code:
         elif most_enemy_food >= 4 or self.food > 2 or len(invaders) > 1:
             self.is_defensive = True
         elif self.pacman_on_own_side(game_state) and len(invaders) > 0:
